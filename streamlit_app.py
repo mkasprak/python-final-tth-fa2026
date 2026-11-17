@@ -146,6 +146,49 @@ def _money(amount: float) -> str:
     return f"${amount:,.2f}"
 
 
+def _parse_ts(ts: Any) -> Optional[datetime]:
+    if not ts:
+        return None
+    if isinstance(ts, datetime):
+        return ts
+    if not isinstance(ts, str):
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _format_ts(ts: Any) -> str:
+    dt = _parse_ts(ts)
+    if not dt:
+        return "Unknown time"
+    local = dt.astimezone()
+    return local.strftime("%b %d, %Y • %I:%M %p").replace(" 0", " ")
+
+
+def _order_breakdown(order: dict[str, Any]) -> dict[str, Any]:
+    base_price = float(order.get("base_price", 0.0) or 0.0)
+    pumps = int(order.get("pumps", 0) or 0)
+    pump_cost = pumps * 0.10
+    total = float(order.get("total", base_price + pump_cost) or 0.0)
+    return {"base_price": base_price, "pumps": pumps, "pump_cost": pump_cost, "total": total}
+
+
+def _to_csv(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return ""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    fieldnames: list[str] = sorted({k for r in rows for k in r.keys()})
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
 def main() -> None:
     st.set_page_config(page_title="Coffee/Tea Ordering", page_icon="☕", layout="centered")
     _ensure_data_files()
@@ -291,32 +334,68 @@ def main() -> None:
                 st.rerun()
             st.stop()
 
-        st.markdown("**Employee**")
-        st.write(
-            {
-                "id": emp_id,
-                "name": f"{emp_record.get('f_name','')} {emp_record.get('l_name','')}".strip(),
-                "office": emp_record.get("office", ""),
-                "extension": emp_record.get("extension", ""),
-                "allergies": emp_record.get("allergies", ""),
-            }
-        )
+        employee_name = f"{emp_record.get('f_name','')} {emp_record.get('l_name','')}".strip()
+        allergies = str(emp_record.get("allergies", "") or "").strip()
+        breakdown = _order_breakdown(order)
 
-        st.markdown("**Order**")
-        st.write(
-            {
-                "drink": order["drink"],
-                "size": order["size"],
-                "milk": order["milk"],
-                "flavor": order["flavor"],
-                "pumps": order["pumps"],
-                "total": _money(float(order["total"])),
-            }
-        )
+        st.progress(0.75, text="Almost done — review your receipt and submit.")
 
-        col1, col2 = st.columns(2)
-        submit = col1.button("Submit order", type="primary", use_container_width=True)
-        edit = col2.button("Edit order", use_container_width=True)
+        top_left, top_right = st.columns([2, 1], gap="large")
+        with top_left:
+            st.markdown("#### Receipt")
+            st.caption("Double-check everything looks right before submitting.")
+            st.markdown(
+                f"""
+**Drink:** {order.get('drink','')}
+
+**Size:** {order.get('size','')}  •  **Milk:** {order.get('milk','')}  •  **Flavor:** {order.get('flavor','')}
+
+**Pumps:** {breakdown['pumps']}  (+{_money(float(breakdown['pump_cost']))})
+                """.strip()
+            )
+
+        with top_right:
+            st.markdown("#### Total")
+            st.metric("Amount due", _money(float(breakdown["total"])))
+            st.caption(f"Base: {_money(float(breakdown['base_price']))}")
+
+        st.divider()
+
+        details_left, details_right = st.columns(2, gap="large")
+        with details_left:
+            st.markdown("#### For")
+            st.markdown(
+                f"""
+**Employee ID:** `{emp_id}`
+
+**Name:** {employee_name or "—"}
+                """.strip()
+            )
+            if allergies:
+                st.warning(f"Allergies / sensitivities: {allergies}", icon="⚠️")
+
+        with details_right:
+            st.markdown("#### Deliver to")
+            office = str(emp_record.get("office", "") or "").strip() or "—"
+            extension = str(emp_record.get("extension", "") or "").strip() or "—"
+            st.markdown(
+                f"""
+**Office:** {office}
+
+**Extension:** {extension}
+                """.strip()
+            )
+
+        with st.form("submit_order_form", clear_on_submit=False):
+            confirm = st.checkbox("I confirm the employee info and order details are correct.")
+            b1, b2, _ = st.columns([1, 1, 2])
+            edit = b1.form_submit_button("Edit order", use_container_width=True)
+            submit = b2.form_submit_button(
+                "Submit order",
+                type="primary",
+                use_container_width=True,
+                disabled=not confirm,
+            )
 
         if edit:
             st.session_state["step"] = "Order"
@@ -331,7 +410,7 @@ def main() -> None:
                 "order": order,
             }
             append_order(payload)
-            st.success("Order submitted (saved to local text files on the Streamlit server).")
+            st.success("Submitted. Your order is now saved and visible in My Orders.")
             st.session_state["order"] = None
             st.session_state["step"] = "My Orders"
             st.rerun()
@@ -352,8 +431,87 @@ def main() -> None:
             st.info("No saved orders for this Employee ID yet.")
             st.stop()
 
-        st.write(f"Showing {len(orders)} order(s) for Employee ID `{emp_id}`.")
-        st.dataframe(orders, use_container_width=True, hide_index=True)
+        orders = sorted(orders, key=lambda o: _parse_ts(o.get("timestamp_utc")) or datetime.min, reverse=True)
+
+        header_left, header_right = st.columns([2, 1])
+        with header_left:
+            st.caption(f"Signed in as Employee ID `{emp_id}`")
+        with header_right:
+            if st.button("Start a new order", type="primary", use_container_width=True):
+                st.session_state["step"] = "Order"
+                st.rerun()
+
+        st.divider()
+
+        max_show = st.slider(
+            "Show most recent orders",
+            min_value=1,
+            max_value=min(50, len(orders)),
+            value=min(10, len(orders)),
+        )
+        shown = orders[:max_show]
+
+        for idx, entry in enumerate(shown, start=1):
+            order_data = entry.get("order") if isinstance(entry.get("order"), dict) else {}
+            order_data = order_data if isinstance(order_data, dict) else {}
+            breakdown = _order_breakdown(order_data)
+            title = f"{idx}. {_format_ts(entry.get('timestamp_utc'))} • {_money(float(breakdown['total']))}"
+            with st.expander(title, expanded=(idx == 1)):
+                c1, c2, c3 = st.columns([2, 1, 1], gap="large")
+                with c1:
+                    st.markdown("**Order**")
+                    st.write(
+                        {
+                            "drink": order_data.get("drink", ""),
+                            "size": order_data.get("size", ""),
+                            "milk": order_data.get("milk", ""),
+                            "flavor": order_data.get("flavor", ""),
+                            "pumps": order_data.get("pumps", 0),
+                        }
+                    )
+                with c2:
+                    st.markdown("**Pricing**")
+                    st.metric("Total", _money(float(breakdown["total"])))
+                    st.caption(f"Base: {_money(float(breakdown['base_price']))}")
+                    st.caption(f"Pumps: {_money(float(breakdown['pump_cost']))}")
+                with c3:
+                    st.markdown("**Actions**")
+                    st.download_button(
+                        "Download JSON",
+                        data=json.dumps(entry, ensure_ascii=False, indent=2),
+                        file_name=f"order_{emp_id}_{idx}.json",
+                        mime="application/json",
+                        use_container_width=True,
+                    )
+
+        st.divider()
+        st.markdown("#### Download / table view")
+        flat_rows: list[dict[str, Any]] = []
+        for entry in orders:
+            o = entry.get("order") if isinstance(entry.get("order"), dict) else {}
+            o = o if isinstance(o, dict) else {}
+            flat_rows.append(
+                {
+                    "timestamp_utc": entry.get("timestamp_utc"),
+                    "employee_id": entry.get("employee_id"),
+                    "drink": o.get("drink"),
+                    "size": o.get("size"),
+                    "milk": o.get("milk"),
+                    "flavor": o.get("flavor"),
+                    "pumps": o.get("pumps"),
+                    "base_price": o.get("base_price"),
+                    "total": o.get("total"),
+                }
+            )
+
+        st.download_button(
+            "Download my orders (CSV)",
+            data=_to_csv(flat_rows),
+            file_name=f"my_orders_{emp_id}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        st.dataframe(flat_rows[:max_show], use_container_width=True, hide_index=True)
 
     else:  # Admin History
         st.subheader("Admin history")
