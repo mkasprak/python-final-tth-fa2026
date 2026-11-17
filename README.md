@@ -17,7 +17,7 @@ streamlit run streamlit_app.py
 
 ## Admin-only history
 
-The **History** page is password protected. Configure one of:
+The **Admin History** page is password protected. Configure one of (recommended first):
 
 - Streamlit Secrets: set `admin_password`
 - Environment variable: `ADMIN_PASSWORD`

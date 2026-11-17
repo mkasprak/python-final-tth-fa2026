@@ -133,6 +133,15 @@ def _init_state() -> None:
     st.session_state.setdefault("order", None)
 
 
+def get_admin_password() -> Optional[str]:
+    admin_password = None
+    try:
+        admin_password = st.secrets.get("admin_password")  # type: ignore[attr-defined]
+    except Exception:
+        admin_password = None
+    return admin_password or os.environ.get("ADMIN_PASSWORD")
+
+
 def _money(amount: float) -> str:
     return f"${amount:,.2f}"
 
@@ -155,11 +164,16 @@ def main() -> None:
         st.error("Menu is missing required categories (DRINK_TYPE / SIZES).")
         st.stop()
 
+    admin_password = get_admin_password()
+
     st.sidebar.header("Navigation")
+    steps = ["Employee", "Order", "Review & Submit", "My Orders"]
+    if admin_password:
+        steps.append("Admin History")
     step = st.sidebar.radio(
         "Step",
-        ["Employee", "Order", "Review & Submit", "History"],
-        index=["Employee", "Order", "Review & Submit", "History"].index(st.session_state["step"]),
+        steps,
+        index=steps.index(st.session_state["step"]) if st.session_state["step"] in steps else 0,
     )
     st.session_state["step"] = step
 
@@ -319,39 +333,47 @@ def main() -> None:
             append_order(payload)
             st.success("Order submitted (saved to local text files on the Streamlit server).")
             st.session_state["order"] = None
-            st.session_state["step"] = "History"
+            st.session_state["step"] = "My Orders"
             st.rerun()
 
-    else:  # History
-        st.subheader("4) Order history")
+    elif step == "My Orders":
+        st.subheader("4) My orders")
 
-        admin_password = None
-        try:
-            admin_password = st.secrets.get("admin_password")  # type: ignore[attr-defined]
-        except Exception:
-            admin_password = None
-        admin_password = admin_password or os.environ.get("ADMIN_PASSWORD")
+        emp_id = st.session_state.get("employee_id", "").strip()
+        if not emp_id:
+            st.warning("Enter/lookup your Employee ID first.")
+            if st.button("Go to Employee"):
+                st.session_state["step"] = "Employee"
+                st.rerun()
+            st.stop()
+
+        orders = [o for o in read_orders() if str(o.get("employee_id", "")).strip() == emp_id]
+        if not orders:
+            st.info("No saved orders for this Employee ID yet.")
+            st.stop()
+
+        st.write(f"Showing {len(orders)} order(s) for Employee ID `{emp_id}`.")
+        st.dataframe(orders, use_container_width=True, hide_index=True)
+
+    else:  # Admin History
+        st.subheader("Admin history")
 
         if not admin_password:
             st.error(
-                "History is admin-only, but no admin password is configured. "
-                "Set `admin_password` in Streamlit Secrets (or `ADMIN_PASSWORD` env var)."
+                "Admin history is not configured. Set `admin_password` in Streamlit Secrets "
+                "(recommended) or `ADMIN_PASSWORD` env var."
             )
             st.stop()
 
         entered = st.text_input("Admin password", type="password")
         if entered != admin_password:
-            st.info("Enter the admin password to view order history.")
+            st.info("Enter the admin password to view admin history.")
             st.stop()
 
         orders = read_orders()
         if not orders:
             st.info("No saved orders yet.")
             st.stop()
-
-        emp_filter = st.text_input("Filter by employee ID (optional)").strip()
-        if emp_filter:
-            orders = [o for o in orders if str(o.get("employee_id", "")).strip() == emp_filter]
 
         st.write(f"Showing {len(orders)} order(s).")
         st.dataframe(orders, use_container_width=True, hide_index=True)
