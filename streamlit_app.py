@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -323,6 +324,25 @@ def main() -> None:
 
     else:  # History
         st.subheader("4) Order history")
+
+        admin_password = None
+        try:
+            admin_password = st.secrets.get("admin_password")  # type: ignore[attr-defined]
+        except Exception:
+            admin_password = None
+        admin_password = admin_password or os.environ.get("ADMIN_PASSWORD")
+
+        if not admin_password:
+            st.error(
+                "History is admin-only, but no admin password is configured. "
+                "Set `admin_password` in Streamlit Secrets (or `ADMIN_PASSWORD` env var)."
+            )
+            st.stop()
+
+        entered = st.text_input("Admin password", type="password")
+        if entered != admin_password:
+            st.info("Enter the admin password to view order history.")
+            st.stop()
 
         orders = read_orders()
         if not orders:
