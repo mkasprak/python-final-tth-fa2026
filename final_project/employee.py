@@ -1,5 +1,6 @@
 import os
 import datetime
+from pathlib import Path
 
 
 def clear_screen():
@@ -9,7 +10,9 @@ def clear_screen():
 def lookup_employee(id):
     employees = {}
     try:
-        with open("final_project\\employee.txt", "r") as file:
+        project_dir = Path(__file__).resolve().parent
+        employee_path = project_dir / "employee.txt"
+        with employee_path.open("r", encoding="utf-8") as file:
             for line in file:
                 parts_of_line = line.strip().split(":{", 1)
                 emp_id = parts_of_line[0].strip().strip("}")
@@ -27,8 +30,9 @@ def lookup_employee(id):
         return False
     except Exception as e:
         right_now = datetime.datetime.now()
-        error_log_path = os.path.join("final_project\\error_log.txt")
-        with open(error_log_path, "a") as f:
+        project_dir = Path(__file__).resolve().parent
+        error_log_path = project_dir / "error_log.txt"
+        with error_log_path.open("a", encoding="utf-8") as f:
             f.write(f"{right_now}, {e}\n")
         print(e)
 
@@ -56,7 +60,9 @@ def get_employee():
             "allergies": known_allergies,
         }
 
-        with open("final_project\\employee.txt", "a") as f:
+        project_dir = Path(__file__).resolve().parent
+        employee_path = project_dir / "employee.txt"
+        with employee_path.open("a", encoding="utf-8") as f:
             f.write(f"{id}:{employee_record}\n")
 
         return id

@@ -2,6 +2,8 @@
 create menu.txt
 """
 
+from pathlib import Path
+
 
 def get_menu_options():
     menu = {}
@@ -18,7 +20,9 @@ def get_menu_options():
 
 
 def save_to_file(menu):
-    with open("final_project\\menu.txt", "a") as file:
+    project_dir = Path(__file__).resolve().parent
+    menu_path = project_dir / "menu.txt"
+    with menu_path.open("a", encoding="utf-8") as file:
         all_items = menu.items()
         for item in all_items:
             output = f"{item[0]} : {item[1]}"

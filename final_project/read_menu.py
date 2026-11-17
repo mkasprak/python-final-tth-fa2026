@@ -5,6 +5,10 @@ imported into main.py
 
 import datetime
 import os
+from pathlib import Path
+
+
+_PROJECT_DIR = Path(__file__).resolve().parent
 
 
 def clear_screen():
@@ -14,7 +18,8 @@ def clear_screen():
 def read_menu():
     menus = {}
     try:
-        with open("final_project\\menu.txt", "r") as file:
+        menu_path = _PROJECT_DIR / "menu.txt"
+        with menu_path.open("r", encoding="utf-8") as file:
             for line in file:
                 parts_of_line = line.strip().split(":", 1)
                 category = parts_of_line[0].strip()
@@ -29,8 +34,8 @@ def read_menu():
         return menus
     except Exception as e:
         right_now = datetime.datetime.now()
-        error_log_path = os.path.join("final_project\\error_log.txt")
-        with open(error_log_path, "a") as f:
+        error_log_path = _PROJECT_DIR / "error_log.txt"
+        with error_log_path.open("a", encoding="utf-8") as f:
             f.write(f"{right_now}, {e}\n")
         print(e)
 

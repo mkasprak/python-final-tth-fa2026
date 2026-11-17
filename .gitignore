@@ -18,3 +18,7 @@ dist/
 Thumbs.db
 .vscode/
 
+# App data (generated at runtime)
+final_project/order_history*
+final_project/error_log.txt
+
