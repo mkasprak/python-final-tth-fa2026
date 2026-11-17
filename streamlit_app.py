@@ -386,16 +386,17 @@ def main() -> None:
                 """.strip()
             )
 
-        with st.form("submit_order_form", clear_on_submit=False):
-            confirm = st.checkbox("I confirm the employee info and order details are correct.")
-            b1, b2, _ = st.columns([1, 1, 2])
-            edit = b1.form_submit_button("Edit order", use_container_width=True)
-            submit = b2.form_submit_button(
-                "Submit order",
-                type="primary",
-                use_container_width=True,
-                disabled=not confirm,
-            )
+        # Note: widgets inside a form only update their values on submit, so a checkbox
+        # cannot be used to "enable" the submit button within the same form.
+        confirm = st.checkbox("I confirm the employee info and order details are correct.")
+        b1, b2, _ = st.columns([1, 1, 2])
+        edit = b1.button("Edit order", use_container_width=True)
+        submit = b2.button(
+            "Submit order",
+            type="primary",
+            use_container_width=True,
+            disabled=not confirm,
+        )
 
         if edit:
             st.session_state["step"] = "Order"
